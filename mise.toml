@@ -1,0 +1,44 @@
+[tools]
+mypy = '1.18.2'
+ruff = 'latest'
+uv = 'latest'
+
+[env]
+# Set a virtual environment for the project
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.clean]
+description = "Do local clean-up"
+run = [
+    'rm -rf .mypy_cache .ruff_cache .venv',
+    'find . -name __pycache__ | xargs rm -rf'
+]
+
+[tasks.format]
+description = "Format python sources"
+run = [
+    # sort imports
+    'uv run ruff check --select I --fix .',
+    # reformat sources
+    'uv run ruff format -v .',
+]
+
+[tasks.lint]
+description = "Lint python sources"
+run = [
+    # check imports
+    'uv run ruff check -v --select I *.py',
+    'uv run ruff check -v *.py'
+]
+
+[tasks.mypy]
+description = "Check typing"
+run = [
+    'uv run mypy .'
+]
+
+[tasks.tests]
+description = "Execute unit tests"
+run = [
+    'uv run -m unittest -v *_test.py',
+]

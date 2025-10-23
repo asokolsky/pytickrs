@@ -1,0 +1,57 @@
+[project]
+name = "fin-cli"
+version = "0.1.0"
+description = "Just playing with financial CLIs."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "scipy",
+    "tabulate",
+    "yfinance",
+]
+
+[dependency-groups]
+dev = [
+    "types-tabulate",
+    "mypy>=1.16.1",
+    "ruff>=0.12.1",
+    "types-pyyaml>=6.0.12.20250516",
+    "typing-inspect>=0.9.0",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "A001","A002","ANN401","ARG001",
+    "B006","B011","BLE001",
+    "C901","COM812",
+    "D100","D101","D102","D103","D104","D107","D200","D202","D205","D212","D400","D401","D415",
+    "E501","EM102","ERA001",
+    "FBT001",
+    "G004",
+    "Q000", "N806",
+    "N801","N803",
+    "PT009","PT015","PLR0915","PLR1711","PLR0912","PLR0913","PLR2004","PLW0603",
+    "RET505","RET507","RUF022",
+    "S101","S603","SIM114","SLF001",
+    "T201",
+    "TRY003","TRY300"
+]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.mypy]
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "yfinance.*",
+    ".*",
+    "strip_ansi.*"
+]
+ignore_missing_imports = true
