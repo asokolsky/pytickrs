@@ -1,11 +1,14 @@
 # finance-cli README
 
-Few CLIs to get data quick.
-e.g.
+Few CLIs to get data and act on these quick, e.g.:
 
 ```sh
 uv run python min-max.py
 ```
+
+## Dependencies
+
+* [yfinance](https://github.com/ranaroussi/yfinance) -  consider alternative [stockdex](https://github.com/ahnazary/stockdex).
 
 ## yfinance
 
