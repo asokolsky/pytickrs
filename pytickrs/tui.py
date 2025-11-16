@@ -1,23 +1,20 @@
 import logging
-import sys
 import typing
 
 import yfinance as yf
-from rich.text import Text
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
-from textual.events import Idle, Timer
 from textual.message import Message
 from textual.widgets import DataTable, Footer, Header, Label
-from textual import work
 from textual.worker import Worker
 
-from tickers import analyze_ticker, header2ticker_info, headers, load_tickers
+from .tickers import analyze_ticker, header2ticker_info, headers, load_tickers
 
 logging.basicConfig(
     filename='main.log',
     encoding='utf-8',
-    filemode='a', # 'w'
+    filemode='a',  # 'w'
     datefmt='%H:%M:%S',
     format='{asctime} {levelname} {message}',
     style='{',
@@ -44,9 +41,12 @@ Label#status {
 }
 """
 
+
 class TaskCompleteMessage(Message):
     """A message indicating the background task is complete."""
+
     pass
+
 
 class TheApp(App):
     """
@@ -135,22 +135,22 @@ class TheApp(App):
         Row in the DataTable is highlighted.
         """
         row_key = event.row_key
-        logger.debug("Row highlighted: %s", row_key.value)
+        logger.debug('Row highlighted: %s', row_key.value)
         if self.tkrs is not None:
             ticker = self.tkrs.tickers.get(row_key.value)
             if ticker is not None:
-                logger.debug("Ticker: %s", ticker)
+                logger.debug('Ticker: %s', ticker)
                 self.set_status(ticker.info['longName'])
                 return
         self.set_status(row_key.value)
         return
 
-    #def on_timer(self, message: Timer) -> None:
+    # def on_timer(self, message: Timer) -> None:
     #    """Handles a Timer event."""
     #    logger.debug('on_timer %s', message)
     #    return
 
-    #def on_idle(self, message: Idle) -> None:
+    # def on_idle(self, message: Idle) -> None:
     #    """Handles an Idle event."""
     #    # logger.debug('on_idle %s', message)
     #    return
@@ -186,7 +186,7 @@ class TheApp(App):
         """
         Called when the background task is complete.
         """
-        self.notify("Background task finished!")
+        self.notify('Background task finished!')
 
         def update_table(table: DataTable, tkrs: yf.Tickers) -> None:
             for ticker in tkrs.tickers.values():
@@ -201,14 +201,15 @@ class TheApp(App):
                     ticker.ticker,
                     headers[-1],
                     '; '.join(analyze_ticker(ticker)),
-                    update_width=True)
+                    update_width=True,
+                )
 
             return
 
         update_table(self.table, self.tkrs)
         self.set_status('Updated')
-        #self.status.styles.width = '25%'
-        #self.footer_inner.styles.width = '75%'
+        # self.status.styles.width = '25%'
+        # self.footer_inner.styles.width = '75%'
         logger.debug('action_update DONE')
         return
 
@@ -220,8 +221,8 @@ class TheApp(App):
     def set_status(self, text: str) -> None:
         """Set the status label text."""
         logger.debug('set_status %s', text)
-        #self.status.styles.width = '75%'
-        #self.footer_inner.styles.width = '25%'
+        # self.status.styles.width = '75%'
+        # self.footer_inner.styles.width = '25%'
         self.status.update(text)
         return
 
@@ -240,14 +241,10 @@ class TheApp(App):
         return
 
 
-def main() -> int:
+def run_tui(verbose: bool) -> int:
     """
-    Main entry point
+    Main TUI entry point
     """
     app = TheApp()
     app.run()
     return 0
-
-
-if __name__ == '__main__':
-    sys.exit(main())

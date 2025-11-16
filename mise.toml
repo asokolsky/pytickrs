@@ -18,27 +18,27 @@ run = [
 description = "Format python sources"
 run = [
     # sort imports
-    'uv run ruff check --select I --fix .',
+    'uv run ruff check --select I --fix pytickrs tests',
     # reformat sources
-    'uv run ruff format -v .',
+    'uv run ruff format -v pytickrs tests',
 ]
 
 [tasks.lint]
 description = "Lint python sources"
 run = [
     # check imports
-    'uv run ruff check -v --select I *.py',
-    'uv run ruff check -v *.py'
+    'uv run ruff check -v --select I pytickrs/*.py tests/*.py',
+    'uv run ruff check -v pytickrs/*.py tests/*.py'
 ]
 
 [tasks.mypy]
 description = "Check typing"
 run = [
-    'uv run mypy .'
+    'uv run mypy pytickrs tests'
 ]
 
 [tasks.tests]
 description = "Execute unit tests"
 run = [
-    'uv run -m unittest -v *_test.py',
+    'uv run -m unittest -v tests/*_test.py',
 ]

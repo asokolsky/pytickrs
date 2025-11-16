@@ -8,7 +8,7 @@ from typing import Any
 import yfinance as yf
 from tabulate import tabulate
 
-from tickers import analyze_ticker, headers, load_tickers
+from .tickers import analyze_ticker, headers, load_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -59,43 +59,24 @@ def process_tickers(logger: logging.Logger, tickers: set[str]) -> None:
     return
 
 
-def main() -> int:
+def run_once(verbose: bool) -> int:
     """
     Main entry point
     """
-    ap = ArgumentParser(
-        prog='fin-cli',
-        description='Fast finance cli',
-        formatter_class=RawTextHelpFormatter,
-        epilog=epilog,
-    )
-    ap.add_argument(
-        '-v',
-        '--verbose',
-        action='store_true',
-        default=False,
-        help='Tell more about what is going on',
-    )
     #
     # parse the command line
     #
-    args = ap.parse_args()
     level = logging.INFO
-    if args.verbose:
+    if verbose:
         level = logging.DEBUG
     logging.basicConfig(level=level)
     logger = logging.getLogger(__name__)
     try:
         tickers = load_tickers('tickers.txt')
         process_tickers(logger, tickers)
-
         return 0
 
     except KeyboardInterrupt:
         eprint('Caught KeyboardInterrupt')
 
     return 1
-
-
-if __name__ == '__main__':
-    sys.exit(main())
