@@ -1,15 +1,16 @@
-# finance-cli README
+# pytickrs README
 
-Few CLIs to get data and act on these quick, e.g.:
+Run CLI to get data and act on these quick, e.g.:
 
 ```sh
-uv run python min-max.py
+uv run python -m pytickrs --once
 ```
 
-Also playing with the use of [textual](https://github.com/Textualize/textual) to create a console TUI:
+Alternatively use console text UI:
 ```sh
-uv run python3 main.py
+uv run python -m pytickrs
 ```
+and press `u` to update.
 
 ## Dependencies
 
