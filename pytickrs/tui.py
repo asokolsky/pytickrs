@@ -1,17 +1,20 @@
 from typing import ClassVar
+import logging
 
+from jinja2 import Template
 import yfinance as yf
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.message import Message
-from textual.widgets import DataTable, Footer, Header, Label
+from textual.widgets import DataTable, Footer, Header, Label, Markdown, MarkdownViewer
 from textual.worker import Worker
 
 from .log import setup_logging
+from .split_pane import SplitContainer
 from .tickers import analyze_ticker, header2ticker_info, headers
 
-log = setup_logging(__name__)
+log: logging.Logger|None = None
 
 CSS = """
 Horizontal#footer-outer {
@@ -60,22 +63,28 @@ class TheApp(App):
         ('ctrl+minus', 'decrease_font_size', 'Decrease Font Size'),
     ]
 
-    def __init__(self, tickers: set[str]) -> None:
+    def __init__(self, tickers: set[str], details: str) -> None:
         super().__init__()
         self.column_index_selected = 0
         self.column_sort_reverse = False
         self.tickers = tickers
         assert self.tickers
+        self.details_template = Template(details)
+        assert self.details_template
         return
 
     def compose(self) -> ComposeResult:
         """
         Create child widgets for the app.
         """
+        assert log is not None
         log.debug('compose %s', self)
         self.tkrs: yf.Tickers | None = None
         yield Header()
-        yield DataTable(cursor_type='row', zebra_stripes=True)
+        yield SplitContainer(
+            before=DataTable(cursor_type='row', zebra_stripes=True, id='tickers'),
+            after=MarkdownViewer(id='details', show_table_of_contents=False, open_links=False),
+        )
         with Horizontal(id='footer-outer'):
             yield Label('This is the left side label', id='status')
             with Horizontal(id='footer-inner'):
@@ -83,26 +92,28 @@ class TheApp(App):
         return
 
     def on_mount(self) -> None:
+        assert log is not None
         log.debug('on_mount %s', self)
 
         def fill_table(
-            table: DataTable, headers: list[str], tickers: list[str]
+            table: DataTable, headers: list[str], rows: list[str]
         ) -> None:
             # add columns and set column key
             for h in headers:
                 table.add_column(h, key=h)
 
-            # add rows with ticker only and set row key
-            for ticker in tickers:
-                row = [ticker if h == headers[0] else '.' for h in headers]
-                table.add_row(*row, key=ticker)
+            # add rows and set row key
+            for row in rows:
+                r = [row if h == headers[0] else '.' for h in headers]
+                table.add_row(*r, key=row)
             return
 
-        self.table = self.query_one(DataTable)
+        self.tickers_table = self.query_one('#tickers', DataTable)
+        self.details = self.query_one('#details', MarkdownViewer)
         self.status = self.query_one('#status')
         self.footer_inner = self.query_one('#footer-inner')
         self.footer = self.query_one('#footer')
-        fill_table(self.table, headers, sorted(self.tickers))
+        fill_table(self.tickers_table, headers, sorted(self.tickers))
 
         # adjust footer status styles
         self.status.styles.background = self.footer.styles.background
@@ -113,8 +124,11 @@ class TheApp(App):
         """
         Handles a click on a column header.
         """
-        log.debug('on_data_table_header_selected %s', message)
-
+        assert log is not None
+        log.debug('on_data_table_header_selected %s', message.data_table.id)
+        if message.data_table != self.tickers_table:
+            log.debug('Ignoring message: %s', message)
+            return
         if self.column_index_selected != message.column_index:
             self.column_sort_reverse = False
             self.column_index_selected = message.column_index
@@ -122,7 +136,7 @@ class TheApp(App):
             self.column_sort_reverse = not self.column_sort_reverse
 
         try:
-            self.table.sort(message.column_key, reverse=self.column_sort_reverse)
+            self.tickers_table.sort(message.column_key, reverse=self.column_sort_reverse)
         except Exception:
             log.exception('Error sorting table:')
         return
@@ -132,15 +146,33 @@ class TheApp(App):
         Row in the DataTable is highlighted.
         """
         row_key = event.row_key
-        log.debug('Row highlighted: %s', row_key.value)
+        assert log is not None
+        log.debug('Row highlighted: %s %s', row_key.value, event.data_table.id)
+        if event.data_table != self.tickers_table:
+            log.debug('Ignoring event: %s', event)
+            return
         if self.tkrs is not None:
             ticker = self.tkrs.tickers.get(row_key.value)
             if ticker is not None:
                 log.debug('Ticker: %s', ticker)
+                self.update_details(ticker)
                 self.set_status(ticker.info['longName'])
                 return
         if row_key.value:
             self.set_status(row_key.value)
+        return
+
+    def update_details(self, ticker: yf.Ticker) -> None:
+        """
+        Update the details table with info from the selected ticker.
+        """
+        assert log is not None
+        log.debug('update_details %s', ticker)
+        info = ticker.info
+        tvars = {k: v for k, v in info.items()}
+        markdown = self.details_template.render(tvars)
+        log.debug('markdown %s', markdown)
+        self.details.document.update(markdown)
         return
 
     # def on_timer(self, message: Timer) -> None:
@@ -155,6 +187,7 @@ class TheApp(App):
 
     def action_quit_app(self) -> None:
         """An action to quit the application."""
+        assert log is not None
         log.debug('action_quit_app %s', self)
         self.exit()
 
@@ -162,6 +195,7 @@ class TheApp(App):
         """
         Update the values for tickers
         """
+        assert log is not None
         log.debug('action_update %s', self)
         self.set_status('Updating...')
         self.run_long_task()
@@ -204,20 +238,23 @@ class TheApp(App):
 
             return
 
-        update_table(self.table, self.tkrs)
+        update_table(self.tickers_table, self.tkrs)
         self.set_status('Updated')
         # self.status.styles.width = '25%'
         # self.footer_inner.styles.width = '75%'
+        assert log is not None
         log.debug('action_update DONE')
         return
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Called when the worker state changes."""
+        assert log is not None
         log.debug('on_worker_state_changed %s', event)
         return
 
     def set_status(self, text: str) -> None:
         """Set the status label text."""
+        assert log is not None
         log.debug('set_status %s', text)
         # self.status.styles.width = '75%'
         # self.footer_inner.styles.width = '25%'
@@ -225,6 +262,7 @@ class TheApp(App):
         return
 
     def action_increase_font_size(self) -> None:
+        assert log is not None
         log.debug('action_increase_font_size %s', self)
         # current_font_size = float(self.css_vars['font_size'].replace('em', ''))
         # new_font_size = min(current_font_size + 0.1, 2.0)  # Limit max size
@@ -232,6 +270,7 @@ class TheApp(App):
         return
 
     def action_decrease_font_size(self) -> None:
+        assert log is not None
         log.debug('action_decrease_font_size %s', self)
         # current_font_size = float(self.css_vars['font_size'].replace('em', ''))
         # new_font_size = max(current_font_size - 0.1, 0.5)  # Limit min size
@@ -239,11 +278,14 @@ class TheApp(App):
         return
 
 
-def run_tui(log_level: int, tickers: set[str]) -> int:
+def run_tui(log_level: int, tickers: set[str], details: str) -> int:
     """
     Main TUI entry point
     """
-    log.setLevel(log_level)
-    app = TheApp(tickers)
+    global log
+    log = setup_logging(__name__, log_level)
+    log.info('Logger: %s', log)
+    # log.info('Details Template: %s', details)
+    app = TheApp(tickers, details)
     app.run()
     return 0

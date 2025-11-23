@@ -13,13 +13,14 @@ from .tui import run_tui
 
 epilog = """Examples:
     python -m pytickrs --version
-    python -m pytickrs --once
-    python -m pytickrs
+    python -m pytickrs --once --ticker=AAPL,MSFT,GOOG
 """
 
 
 def comma_separated_list(arg: str) -> list[str]:
     return arg.strip().split(',')
+
+
 
 
 def load_tickers(f) -> set[str]:
@@ -49,28 +50,40 @@ def main() -> int:
         help='Tell more about what is going on',
     )
     ap.add_argument(
-        '--once',
-        action='store_true',
-        default=False,
-        help='One-time tickers info and recommendations',
-    )
-    ap.add_argument(
         '--version',
         action='store_true',
         help='Display module version and exit.',
     )
     #
+    # '--once' and '--details-template' are mutually exclusive
+    #
+    group1 = ap.add_mutually_exclusive_group()
+    group1.add_argument(
+        '--once',
+        action='store_true',
+        default=False,
+        help='One-time tickers info and recommendations',
+    )
+    group1.add_argument(
+        '--details-template',
+        type=FileType('r'),
+        default='details-template.md',
+        help='Path to the Jinja details template, default: details-template.md',
+    )
+    #
     # '--tickers' and '--tickers-from' are mutually exclusive
     #
-    group = ap.add_mutually_exclusive_group()
-    group.add_argument(
-        '--tickers', type=comma_separated_list, help='A comma-separated list of tickers'
+    group2 = ap.add_mutually_exclusive_group()
+    group2.add_argument(
+        '--tickers',
+        type=comma_separated_list,
+        help='A comma-separated list of tickers'
     )
-    group.add_argument(
+    group2.add_argument(
         '--tickers-from',
         type=FileType('r'),
         default='tickers.txt',
-        help='Path to a file with tickers (one per line)',
+        help='Path to a file with tickers (one per line), default: tickers.txt',
     )
 
     args = ap.parse_args()
@@ -83,7 +96,7 @@ def main() -> int:
     if args.once:
         return run_once(level, tickers)
 
-    return run_tui(level, tickers)
+    return run_tui(level, tickers, args.details_template.read())
 
 
 if __name__ == '__main__':

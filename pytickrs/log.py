@@ -1,5 +1,6 @@
 import logging
-import logging.config
+
+# import logging.config
 import sys
 from typing import Any
 
@@ -11,7 +12,7 @@ def eprint(*args: Any) -> None:
 def setup_logging(
     logger_name: str | None,
     level: int = logging.NOTSET,
-) -> Any:
+) -> logging.Logger:
     """
     Setup the logger `logger_name`
     """
@@ -20,7 +21,7 @@ def setup_logging(
         encoding='utf-8',
         filemode='a',  # 'w'
         datefmt='%H:%M:%S',
-        format='{asctime} {levelname} {message}',
+        format='{asctime} {name} {levelname} {message}',
         style='{',
         level=level,
     )
