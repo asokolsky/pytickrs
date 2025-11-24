@@ -14,8 +14,13 @@ and press `u` to update.
 
 ## Dependencies
 
-* [yfinance](https://github.com/ranaroussi/yfinance) -  consider alternative [stockdex](https://github.com/ahnazary/stockdex).
+* [jinja2](https://jinja.palletsprojects.com/en/stable/)
 * [textual](https://textual.textualize.io/)
+* [yfinance](https://github.com/ranaroussi/yfinance) -  consider alternative [stockdex](https://github.com/ahnazary/stockdex).
+
+### jinja
+
+Just a templating engine.
 
 ### textual
 
