@@ -5,11 +5,12 @@ Run pytickrs
 
 import logging
 import sys
-from argparse import ArgumentParser, ArgumentTypeError, FileType, RawTextHelpFormatter
+from argparse import ArgumentParser, ArgumentTypeError, RawTextHelpFormatter
 from pathlib import Path
 
 from . import __version__
 from .once import run_once
+from .tickers import load_tickers
 from .tui import run_tui
 
 epilog = """Examples:
@@ -17,8 +18,12 @@ epilog = """Examples:
     python -m pytickrs --once --ticker=AAPL,MSFT,GOOG
 """
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DETAILS_TEMPLATE = PROJECT_ROOT / 'details-template.md'
+DEFAULT_TICKERS_FILE = PROJECT_ROOT / 'tickers.txt'
 
-def existing_file_path(path: str) -> bool:
+
+def existing_file_path(path: str) -> str:
     """
     Custom type function for argparse to validate an existing file path.
     """
@@ -32,15 +37,6 @@ def existing_file_path(path: str) -> bool:
 
 def comma_separated_list(arg: str) -> list[str]:
     return arg.strip().split(',')
-
-
-def load_tickers(f) -> set[str]:
-    tickers: set[str] = set()
-    for line1 in f:
-        line = line1.strip()
-        if line and not line.startswith('#'):
-            tickers.add(line.upper())
-    return tickers
 
 
 def main() -> int:
@@ -78,7 +74,7 @@ def main() -> int:
     group1.add_argument(
         '--details-template',
         type=existing_file_path,
-        default='details-template.md',
+        default=str(DEFAULT_DETAILS_TEMPLATE),
         help='Path to the Jinja details template, default: details-template.md',
     )
     #
@@ -90,8 +86,8 @@ def main() -> int:
     )
     group2.add_argument(
         '--tickers-from',
-        type=FileType('r'),
-        default='tickers.txt',
+        type=existing_file_path,
+        default=str(DEFAULT_TICKERS_FILE),
         help='Path to a file with tickers (one per line), default: tickers.txt',
     )
 
@@ -101,7 +97,7 @@ def main() -> int:
         return 0
 
     level = logging.DEBUG if args.verbose else logging.INFO
-    tickers = args.tickers if args.tickers else load_tickers(args.tickers_from)
+    tickers = args.tickers or load_tickers(args.tickers_from)
     if args.once:
         return run_once(level, tickers)
 

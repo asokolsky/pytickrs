@@ -1,6 +1,4 @@
 [tools]
-mypy = 'latest'
-ruff = 'latest'
 uv = 'latest'
 
 [env]
@@ -11,6 +9,13 @@ description = "Set a virtual environment for the project"
 # _.python.venv = { path = ".venv", create = true }
 run = [
     'uv sync --group dev'
+]
+
+[tasks.pytickrs]
+description = "Run pytickrs"
+depends = ["venv"]
+run = [
+    'uv run python -m pytickrs'
 ]
 
 [tasks.clean]

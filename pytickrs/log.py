@@ -8,11 +8,13 @@ from typing import Any
 def eprint(*args: Any) -> None:
     print(*args, file=sys.stderr)
 
+
 log_levels = {
     'markdown_it': logging.WARNING,
     #'pytickrs': logging.INFO,
     'yfinance': logging.WARNING,
 }
+
 
 def setup_logging(
     logger_name: str | None,

@@ -25,7 +25,7 @@ import time
 from collections import deque
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Any
+from typing import IO, Any, Self
 
 from pytickrs import setup_logging
 
@@ -50,7 +50,7 @@ class ProcessSession:
         self.env = env
         return
 
-    def __enter__(self) -> 'ProcessSession':
+    def __enter__(self) -> Self:
         """
         Enter the with block, start the CLI session
         """

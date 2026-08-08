@@ -1,6 +1,9 @@
 import logging
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import ClassVar
-from datetime import datetime
 
 import yfinance as yf
 from jinja2 import Environment, FileSystemLoader, Template
@@ -14,7 +17,12 @@ from textual.worker import Worker
 
 from .log import eprint, setup_logging
 from .split_pane import SplitContainer
-from .tickers import analyze_ticker, header2ticker_info, headers, ticker_info_sanitize_keys
+from .tickers import (
+    analyze_info,
+    header2ticker_info,
+    headers,
+    ticker_info_sanitize_keys,
+)
 
 log: logging.Logger | None = None
 
@@ -36,9 +44,24 @@ Label#status {
 
 
 class TaskCompleteMessage(Message):
-    """
-    A message indicating the background task is complete.
-    """
+    """A message indicating the background task is complete."""
+
+    def __init__(
+        self,
+        ticker_info: dict[str, dict[str, object]],
+        errors: dict[str, str],
+    ) -> None:
+        super().__init__()
+        self.ticker_info = ticker_info
+        self.errors = errors
+
+
+class TaskFailedMessage(Message):
+    """A message indicating the background task failed."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self.error = error
 
 
 class TheApp(App):
@@ -48,10 +71,9 @@ class TheApp(App):
     2. Display tickers in a table
     3. Update ticker data on user command
     4. Sort table by column on header click
-    5. Increase/decrease font size on user command
-    6. Quit app on user command
-    7. Log actions to a file
-    8. Use yfinance to fetch ticker data
+    5. Quit app on user command
+    6. Log actions to a file
+    7. Use yfinance to fetch ticker data
     """
 
     TITLE = 'Stock Analyzer'
@@ -61,8 +83,6 @@ class TheApp(App):
     BINDINGS: ClassVar = [
         ('q', 'quit_app', 'Quit'),
         ('u', 'update', 'Update'),
-        ('ctrl+plus', 'increase_font_size', 'Increase Font Size'),
-        ('ctrl+minus', 'decrease_font_size', 'Decrease Font Size'),
     ]
 
     def __init__(self, tickers: set[str], details_template: Template) -> None:
@@ -73,6 +93,7 @@ class TheApp(App):
         assert self.tickers
         self.details_template = details_template
         assert self.details_template
+        self.ticker_info: dict[str, dict[str, object]] = {}
         return
 
     def compose(self) -> ComposeResult:
@@ -81,7 +102,6 @@ class TheApp(App):
         """
         assert log is not None
         log.debug('compose %s', self)
-        self.tkrs: yf.Tickers | None = None
         yield Header()
         yield SplitContainer(
             before=DataTable(cursor_type='row', zebra_stripes=True, id='tickers'),
@@ -90,7 +110,7 @@ class TheApp(App):
             ),
         )
         with Horizontal(id='footer-outer'):
-            yield Label('This is the left side label', id='status')
+            yield Label('Updating...', id='status')
             with Horizontal(id='footer-inner'):
                 yield Footer(id='footer')
         return
@@ -120,6 +140,7 @@ class TheApp(App):
         # adjust footer status styles
         self.status.styles.background = self.footer.styles.background
         self.status.styles.color = self.footer.styles.color
+        self.call_after_refresh(self.action_update)
         return
 
     def on_data_table_header_selected(self, message: DataTable.HeaderSelected) -> None:
@@ -155,24 +176,23 @@ class TheApp(App):
         if event.data_table != self.tickers_table:
             log.debug('Ignoring event: %s', event)
             return
-        if self.tkrs is not None:
-            ticker = self.tkrs.tickers.get(row_key.value)
-            if ticker is not None:
-                log.debug('Ticker: %s', ticker)
-                self.update_details(ticker)
-                self.set_status(ticker.info['longName'])
-                return
-        if row_key.value:
-            self.set_status(row_key.value)
+        symbol = row_key.value
+        if symbol is None:
+            return
+        info = self.ticker_info.get(symbol)
+        if info is not None:
+            self.update_details(info)
+            self.set_status(str(info.get('longName', symbol)))
+            return
+        self.set_status(symbol)
         return
 
-    def update_details(self, ticker: yf.Ticker) -> None:
+    def update_details(self, info: Mapping[str, object]) -> None:
         """
         Update the details table with info from the selected ticker.
         """
         assert log is not None
-        log.debug('update_details %s', ticker)
-        info = ticker.info
+        log.debug('update_details')
         tvars = dict(info.items())
         log.debug('corporateActions: %s', tvars.get('corporateActions'))
         # sanitize data - these are broken for NTDOY
@@ -220,9 +240,35 @@ class TheApp(App):
         exclusive: Cancel all workers in the same group.
         thread: Mark the method as a thread worker.
         """
-        self.tkrs = yf.Tickers(list(self.tickers))
-        self.tkrs.history(period='1d', repair=True, progress=False)
-        self.post_message(TaskCompleteMessage())
+        assert log is not None
+        try:
+            tickers = yf.Tickers(list(self.tickers))
+            tickers.history(period='1d', repair=True, progress=False)
+            ticker_info: dict[str, dict[str, object]] = {}
+            errors: dict[str, str] = {}
+
+            def fetch_info(ticker: yf.Ticker) -> tuple[str, dict[str, object]]:
+                return ticker.ticker, dict(ticker.info)
+
+            workers = min(6, len(tickers.tickers))
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(fetch_info, ticker): ticker.ticker
+                    for ticker in tickers.tickers.values()
+                }
+                for future in as_completed(futures):
+                    symbol = futures[future]
+                    try:
+                        ticker_symbol, info = future.result()
+                        ticker_info[ticker_symbol] = info
+                    except Exception as error:
+                        log.exception('Failed to fetch info for %s', symbol)
+                        errors[symbol] = str(error) or type(error).__name__
+
+            self.post_message(TaskCompleteMessage(ticker_info, errors))
+        except Exception as error:
+            log.exception('Failed to update ticker data')
+            self.post_message(TaskFailedMessage(error))
         return
 
     def on_task_complete_message(self, message: TaskCompleteMessage) -> None:
@@ -231,31 +277,56 @@ class TheApp(App):
         """
         self.notify('Background task finished!')
 
-        def update_table(table: DataTable, tkrs: yf.Tickers) -> None:
-            for ticker in tkrs.tickers.values():
-                info = ticker.info
+        def update_table(
+            table: DataTable, ticker_info: Mapping[str, Mapping[str, object]]
+        ) -> None:
+            for symbol, info in ticker_info.items():
                 for k, v in header2ticker_info.items():
-                    if table.get_cell(ticker.ticker, k) is None:
+                    if table.get_cell(symbol, k) is None:
                         continue
                     if info.get(v) is None:
                         continue
-                    table.update_cell(ticker.ticker, k, info.get(v))
+                    table.update_cell(symbol, k, info.get(v))
                 table.update_cell(
-                    ticker.ticker,
+                    symbol,
                     headers[-1],
-                    '; '.join(analyze_ticker(ticker)),
+                    '; '.join(analyze_info(info)),
                     update_width=True,
                 )
 
             return
 
-        update_table(self.tickers_table, self.tkrs)
-        self.set_status('Updated')
+        try:
+            self.ticker_info = message.ticker_info
+            update_table(self.tickers_table, self.ticker_info)
+        except Exception as error:
+            assert log is not None
+            log.exception('Failed to apply ticker data')
+            self.on_task_failed_message(TaskFailedMessage(error))
+            return
+        updated = len(message.ticker_info)
+        failed = len(message.errors)
+        if failed:
+            failed_symbols = ', '.join(sorted(message.errors))
+            self.set_status(f'Updated {updated}; failed {failed}: {failed_symbols}')
+            self.notify(
+                failed_symbols,
+                title=f'{failed} ticker updates failed',
+                severity='warning',
+            )
+        else:
+            self.set_status(f'Updated {updated} tickers')
         # self.status.styles.width = '25%'
         # self.footer_inner.styles.width = '75%'
         assert log is not None
         log.debug('action_update DONE')
         return
+
+    def on_task_failed_message(self, message: TaskFailedMessage) -> None:
+        """Report a background refresh failure without exiting the app."""
+        error_text = str(message.error) or type(message.error).__name__
+        self.set_status(f'Update failed: {error_text}')
+        self.notify(error_text, title='Ticker update failed', severity='error')
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Called when the worker state changes."""
@@ -272,21 +343,6 @@ class TheApp(App):
         self.status.update(text)
         return
 
-    def action_increase_font_size(self) -> None:
-        assert log is not None
-        log.debug('action_increase_font_size %s', self)
-        # current_font_size = float(self.css_vars['font_size'].replace('em', ''))
-        # new_font_size = min(current_font_size + 0.1, 2.0)  # Limit max size
-        # self.set_css_vars(font_size=f'{new_font_size}em')
-        return
-
-    def action_decrease_font_size(self) -> None:
-        assert log is not None
-        log.debug('action_decrease_font_size %s', self)
-        # current_font_size = float(self.css_vars['font_size'].replace('em', ''))
-        # new_font_size = max(current_font_size - 0.1, 0.5)  # Limit min size
-        # self.set_css_vars(font_size=f'{new_font_size}em')
-        return
 
 #
 # Custom global functions for use in the jinja template
@@ -311,12 +367,14 @@ def format_num(num: str) -> str:
         pass
     return ''
 
+
 def format_date(val: str) -> str:
     try:
-        return datetime.fromtimestamp(int(val)).strftime('%Y-%m-%d')
+        return datetime.fromtimestamp(int(val), tz=UTC).strftime('%Y-%m-%d')
     except (UndefinedError, ValueError):
         pass
     return ''
+
 
 def safe(val: str) -> str:
     try:
@@ -325,12 +383,14 @@ def safe(val: str) -> str:
         pass
     return ''
 
+
 def is_defined(val: str) -> bool:
     try:
         return True
     except UndefinedError:
         pass
     return False
+
 
 def run_tui(log_level: int, tickers: set[str], details_path: str) -> int:
     """
@@ -342,7 +402,10 @@ def run_tui(log_level: int, tickers: set[str], details_path: str) -> int:
     # log.info('Details Template: %s', details)
 
     try:
-        env = Environment(autoescape=True, loader=FileSystemLoader(''))
+        template_path = Path(details_path)
+        env = Environment(
+            autoescape=True, loader=FileSystemLoader(str(template_path.parent))
+        )
         # define custom global functions for use in the template
         log.debug('Environment: %s', env)
         log.debug('Environment.globals: %s', env.globals)
@@ -350,7 +413,7 @@ def run_tui(log_level: int, tickers: set[str], details_path: str) -> int:
         env.globals['format_date'] = format_date
         env.globals['is_defined'] = is_defined
         env.globals['safe'] = safe
-        details_template = env.get_template(details_path)
+        details_template = env.get_template(template_path.name)
         app = TheApp(tickers, details_template)
         app.run()
         return 0
