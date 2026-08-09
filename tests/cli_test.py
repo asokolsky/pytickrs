@@ -1,10 +1,10 @@
 import subprocess
 import tempfile
-import time
 import unittest
 from pathlib import Path
 
 from pytickrs import __version__, setup_logging
+from pytickrs.__main__ import comma_separated_list
 from pytickrs.tickers import analyze_ticker, load_tickers
 
 log = setup_logging(__name__)
@@ -34,29 +34,17 @@ def run_cli(
     assert popen is not None
     # retrieve stdout and stderr
     stdin_value = '\n'.join(cmds)
-    stdout_value = ''
-    stderr_value = ''
     try:
-        stdout_value, stderr_value = popen.communicate(input=stdin_value)
-    except Exception as err:
-        log.info(f'Caught while tying to communicate with {popen.pid}: {err}')
-
-    if popen.returncode is None:
-        # now wait for the process to complete
-        try:
-            log.info(f'Waiting for upto {timeout} secs for {popen.pid}...')
-            start = time.time()
-            popen.wait(timeout)
-            # the process has terminated
-            elapsed = time.time() - start
-            log.info(
-                f'{popen.pid} terminated after {elapsed:.3f} secs, ec: {popen.returncode}'
-            )
-
-        except subprocess.TimeoutExpired:
-            elapsed = time.time() - start
-            log.info(f'Waiting for {popen.pid} timed out after {elapsed} secs')
-            return -1, '', ''
+        # Apply the timeout while exchanging data so a hung CLI cannot block the test.
+        stdout_value, stderr_value = popen.communicate(
+            input=stdin_value, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        log.info('CLI process %s timed out after %.3f secs', popen.pid, timeout)
+        # Kill and reap the child to close its pipes and avoid leaving a stray process.
+        popen.kill()
+        popen.communicate()
+        return -1, '', ''
 
     return popen.returncode, stdout_value, stderr_value
 
@@ -88,6 +76,14 @@ class TestCLI(unittest.TestCase):
             tickers_file = Path(temp_dir) / 'tickers.txt'
             tickers_file.write_text('# Watchlist\n\naapl\nMSFT\n', encoding='utf-8')
             self.assertEqual(load_tickers(str(tickers_file)), {'AAPL', 'MSFT'})
+
+    def test_comma_separated_tickers_are_normalized(self) -> None:
+        self.assertEqual(comma_separated_list(' aapl, MSFT,,aapl '), {'AAPL', 'MSFT'})
+
+    def test_comma_separated_tickers_reject_empty_input(self) -> None:
+        ec, _, err = run_cli(args=['--tickers= , '])
+        self.assertEqual(ec, 2)
+        self.assertIn('At least one ticker symbol is required.', err)
 
     def test_analyze_ticker_with_missing_data(self) -> None:
         self.assertEqual(analyze_ticker(TestTicker({})), [])

@@ -31,7 +31,8 @@ Horizontal#footer-outer {
     height: 1;
     dock: bottom;
 }
-Horizonal#footer-inner {
+/* Reserve the rest of the footer row for Textual's key-binding hints. */
+Horizontal#footer-inner {
     width: 66%;
     dock: right;
 }
@@ -297,8 +298,10 @@ class TheApp(App):
             return
 
         try:
-            self.ticker_info = message.ticker_info
-            update_table(self.tickers_table, self.ticker_info)
+            # Only successful responses are included in message.ticker_info. Merge them
+            # into the cache so a transient failure keeps the symbol's last known details.
+            self.ticker_info.update(message.ticker_info)
+            update_table(self.tickers_table, message.ticker_info)
         except Exception as error:
             assert log is not None
             log.exception('Failed to apply ticker data')

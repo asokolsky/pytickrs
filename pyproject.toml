@@ -56,10 +56,9 @@ warn_return_any = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
+# These third-party packages do not currently provide complete type information.
 module = [
     "textual.*",
     "yfinance.*",
-    "strip_ansi.*",
-    ".*"
 ]
 ignore_missing_imports = true

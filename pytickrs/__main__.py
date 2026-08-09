@@ -35,8 +35,14 @@ def existing_file_path(path: str) -> str:
     return path
 
 
-def comma_separated_list(arg: str) -> list[str]:
-    return arg.strip().split(',')
+def comma_separated_list(arg: str) -> set[str]:
+    """Return normalized unique ticker symbols from a comma-separated argument."""
+    # Canonicalize CLI input to match file-loaded symbols and discard empty items.
+    tickers = {ticker.strip().upper() for ticker in arg.split(',') if ticker.strip()}
+    if not tickers:
+        message = 'At least one ticker symbol is required.'
+        raise ArgumentTypeError(message)
+    return tickers
 
 
 def main() -> int:
